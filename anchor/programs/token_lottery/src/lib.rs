@@ -138,6 +138,10 @@ pub mod token_lottery {
 
         Ok(())
     }
+
+    pub fn buy_ticket(ctx: Context<BuyTicket>) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -205,6 +209,12 @@ pub struct InitilizeLottery<'info> {
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct BuyTicket<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
 }
 
 #[account]
