@@ -2,58 +2,60 @@ import * as anchor from '@coral-xyz/anchor'
 import { Program } from '@coral-xyz/anchor'
 import { TokenLottery } from '../target/types/token_lottery'
 import { TOKEN_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/utils/token'
-import * as sb from "@switchboard-xyz/on-demand";
-import SwitchBoardIDL from '../switchboard.json';
-import fs from 'fs';
+import * as sb from '@switchboard-xyz/on-demand'
+import SwitchBoardIDL from '../switchboard.json'
+import fs from 'fs'
 describe('token-lottery', () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env()
   const connection = provider.connection
   anchor.setProvider(provider)
 
-  let switchboardProgram = new anchor.Program(SwitchBoardIDL as anchor.Idl, provider);
-  const rngKp = anchor.web3.Keypair.generate();
-  const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-  
+  let switchboardProgram = new anchor.Program(SwitchBoardIDL as anchor.Idl, provider)
+    // let switchboardProgram:any
+  const rngKp = anchor.web3.Keypair.generate()
+  const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
 
   const wallet = provider.wallet as anchor.Wallet
 
   const program = anchor.workspace.TokenLottery as Program<TokenLottery>
 
-   async function buyTicket() {
-    const buyTicketIx = await program.methods.buyTicket()
+  async function buyTicket() {
+    const buyTicketIx = await program.methods
+      .buyTicket()
       .accounts({
-      tokenProgram: TOKEN_PROGRAM_ID,
-    })
-    .instruction();
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction()
 
-    const blockhashContext = await connection.getLatestBlockhash();
+    const blockhashContext = await connection.getLatestBlockhash()
 
     const computeIx = anchor.web3.ComputeBudgetProgram.setComputeUnitLimit({
-     units: 300000
-    });
+      units: 300000,
+    })
 
     const priorityIx = anchor.web3.ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: 1
-    });
+      microLamports: 1,
+    })
 
     const tx = new anchor.web3.Transaction({
       blockhash: blockhashContext.blockhash,
       lastValidBlockHeight: blockhashContext.lastValidBlockHeight,
       feePayer: wallet.payer.publicKey,
-    }).add(buyTicketIx)
+    })
+      .add(buyTicketIx)
       .add(computeIx)
-      .add(priorityIx);
+      .add(priorityIx)
 
-    const sig = await anchor.web3.sendAndConfirmTransaction(connection, tx, [wallet.payer]);
-    console.log("buy ticket ", sig);
+    const sig = await anchor.web3.sendAndConfirmTransaction(connection, tx, [wallet.payer])
+    console.log('buy ticket ', sig)
   }
-  
-//use this code for generating the switchboard.json file
+
+  //use this code for generating the switchboard.json file
 
   // beforeAll( async () => {
   //   const switchboardIDL = await anchor.Program.fetchIdl(
-  //     sb.ON_DEMAND_MAINNET_PID, 
+  //     sb.ON_DEMAND_MAINNET_PID,
   //     {connection: new anchor.web3.Connection("https://api.mainnet-beta.solana.com")}
   //   ) as anchor.Idl;
 
@@ -67,75 +69,71 @@ describe('token-lottery', () => {
   // });
   it('should init config', async () => {
     // Add your test here.
-    const initConfigIx = await program.methods.initializeConfig(
-      new anchor.BN(0),
-      new anchor.BN(1863132288),
-      new anchor.BN(10000)
-    ).instruction();
-    const mint = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from('collection_mint')],
-      program.programId,
-    )[0];
+    const initConfigIx = await program.methods
+      .initializeConfig(new anchor.BN(0), new anchor.BN(1863132288), new anchor.BN(10000))
+      .instruction()
+    const mint = anchor.web3.PublicKey.findProgramAddressSync([Buffer.from('collection_mint')], program.programId)[0]
 
     const metadata = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-        TOKEN_METADATA_PROGRAM_ID,
-      )[0];
-  
+      [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      TOKEN_METADATA_PROGRAM_ID,
+    )[0]
+
     const masterEdition = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer(), Buffer.from('edition')],
-        TOKEN_METADATA_PROGRAM_ID,
-      )[0];
-     const initLotteryIx = await program.methods.initilizeLottery().accounts({
-      //@ts-ignore
-      masterEdition: masterEdition,
-      metadata: metadata,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    }).instruction();
+      [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer(), Buffer.from('edition')],
+      TOKEN_METADATA_PROGRAM_ID,
+    )[0]
+    const initLotteryIx = await program.methods
+      .initilizeLottery()
+      .accounts({
+        //@ts-ignore
+        masterEdition: masterEdition,
+        metadata: metadata,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction()
 
     console.log('Your transaction signature', initConfigIx)
-    const blockhashContext = await connection.getLatestBlockhash();
+    const blockhashContext = await connection.getLatestBlockhash()
     // need to do
     //solana program dump -u m metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s metadata.so
     //solana-test-validator --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s metadata.so --reset
-    const tx = new anchor.web3.Transaction(
-      {
-        blockhash: blockhashContext.blockhash,
-        lastValidBlockHeight: blockhashContext.lastValidBlockHeight,
-        feePayer: wallet.payer.publicKey,
-      }
-    ).add(initConfigIx)
-    .add(initLotteryIx);
-    
+    const tx = new anchor.web3.Transaction({
+      blockhash: blockhashContext.blockhash,
+      lastValidBlockHeight: blockhashContext.lastValidBlockHeight,
+      feePayer: wallet.payer.publicKey,
+    })
+      .add(initConfigIx)
+      .add(initLotteryIx)
 
-    const signature = await anchor.web3.sendAndConfirmTransaction(connection, tx, [wallet.payer],{skipPreflight:true});
+    const signature = await anchor.web3.sendAndConfirmTransaction(connection, tx, [wallet.payer], {
+      skipPreflight: true,
+    })
     console.log('Your transaction signature', signature)
 
-   await buyTicket();
-   await buyTicket();
-   await buyTicket();
-   await buyTicket();
-   await buyTicket();
-   await buyTicket();
-   await buyTicket();
+    await buyTicket()
+    await buyTicket()
+    await buyTicket()
+    await buyTicket()
+    await buyTicket()
+    await buyTicket()
+    await buyTicket()
 
+    const queue = new anchor.web3.PublicKey('A43DyUGA7s8eXPxqEjJY6EBu1KKbNgfxF8h17VAHn13w')
 
-
-    const queue = new anchor.web3.PublicKey("A43DyUGA7s8eXPxqEjJY6EBu1KKbNgfxF8h17VAHn13w");
-
-    const queueAccount = new sb.Queue(switchboardProgram, queue);
-    console.log("Queue account", queue.toString());
+    const queueAccount = new sb.Queue(switchboardProgram, queue)
+    console.log('Queue account', queue.toString())
     try {
-      await queueAccount.loadData();
+      await queueAccount.loadData()
     } catch (err) {
-      console.log("Queue account not found");
-      process.exit(1);
+      console.log('Queue account not found')
+      process.exit(1)
     }
 
-    const [randomness, createRandomnessIx] = await sb.Randomness.create(switchboardProgram, rngKp, queue);
-    console.log("Created randomness account..");
-    console.log("Randomness account", randomness.pubkey.toBase58());
-    console.log("rkp account", rngKp.publicKey.toBase58());
+    const [randomness, createRandomnessIx] = await sb.Randomness.create(switchboardProgram, rngKp, queue)
+    console.log('Created randomness account..')
+    console.log('Randomness account', randomness.pubkey.toBase58())
+    console.log('rkp account', rngKp.publicKey.toBase58())
 
     const createRandomnessTx = await sb.asV0Tx({
       connection: connection,
@@ -144,25 +142,79 @@ describe('token-lottery', () => {
       signers: [wallet.payer, rngKp],
       computeUnitPrice: 75_000,
       computeUnitLimitMultiple: 1.3,
-    });
+    })
 
     // const blockhashContext = await connection.getLatestBlockhashAndContext();
-  
-    const createRandomnessSignature = await connection.sendTransaction(createRandomnessTx);
+
+    const createRandomnessSignature = await connection.sendTransaction(createRandomnessTx)
+    // const blockhashContext2 = await connection.getLatestBlockhash()
     // await connection.confirmTransaction({
     //   signature: createRandomnessSignature,
-    //   blockhash: blockhashContext.value.blockhash,
-    //   lastValidBlockHeight: blockhashContext.value.lastValidBlockHeight
-    // });
-    console.log(
-      "Transaction Signature for randomness account creation: ",
-      createRandomnessSignature
-    );
+    //   blockhash: blockhashContext2.blockhash,
+    //   lastValidBlockHeight: blockhashContext2.lastValidBlockHeight,
+    // })
+    // console.log('Transaction Signature for randomness account creation: ', createRandomnessSignature)
+  let confirmed = false
+    while (!confirmed) {
+      try {
+        const confirmedRandomness = await provider.connection.getSignatureStatuses([createRandomnessSignature])
+        const randomnessStatus = confirmedRandomness.value[0];
 
+        if (randomnessStatus?.confirmationStatus !=null && randomnessStatus.confirmationStatus === 'confirmed') {
+          console.log('Randomness account created')
+          confirmed = true;
+        }
+      } catch (err) {
+        console.log('Waiting for randomness account creation')
+       
+      }
+    }
     
-  })
+    
+    const sbCommitIx = await randomness.commitIx(queue)
 
+    const commitIx = await program.methods
+      .commitRanomness()
+      .accounts({
+        randomnessAccountData: randomness.pubkey,
+      })
+      .instruction()
 
- 
+    const commitComputeIx = anchor.web3.ComputeBudgetProgram.setComputeUnitLimit({
+      units: 300000,
+    })
 
+    const commitPriorityIx = anchor.web3.ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 1,
+    })
+
+    // const commitTx = await sb.asV0Tx({
+    //   connection: switchboardProgram.provider.connection,
+    //   ixs: [sbCommitIx, commitIx],
+    //   payer: wallet.publicKey,
+    //   signers: [wallet.payer],
+    //   computeUnitPrice: 75_000,
+    //   computeUnitLimitMultiple: 1.3,
+    // })
+    const commitBlockhashWithContext = await connection.getLatestBlockhash()
+    const commitTx = new anchor.web3.Transaction({
+      blockhash: commitBlockhashWithContext.blockhash,
+      lastValidBlockHeight: commitBlockhashWithContext.lastValidBlockHeight,
+      feePayer: wallet.payer.publicKey,
+    })
+      .add(sbCommitIx)
+      .add(commitIx)
+      .add(commitComputeIx)
+      .add(commitPriorityIx)
+
+    // const blockhashContext3 = await connection.getLatestBlockhash()
+    // const commitSignature = await connection.sendTransaction(commitTx)
+    // await connection.confirmTransaction({
+    //   signature: commitSignature,
+    //   blockhash: blockhashContext3.blockhash,
+    //   lastValidBlockHeight: blockhashContext3.lastValidBlockHeight,
+    // })
+    const commitSignature = await anchor.web3.sendAndConfirmTransaction(connection, commitTx, [wallet.payer],{skipPreflight:true})
+    console.log('Transaction Signature for commit: ', commitSignature)
+  },300000)
 })
