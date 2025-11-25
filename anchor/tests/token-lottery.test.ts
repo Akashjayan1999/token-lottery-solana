@@ -69,8 +69,12 @@ describe('token-lottery', () => {
   // });
   it('should init config', async () => {
     // Add your test here.
+
+    const slot = await connection.getSlot();
+    const endSlot = slot + 20;
+    console.log("Current slot", slot);
     const initConfigIx = await program.methods
-      .initializeConfig(new anchor.BN(0), new anchor.BN(1863132288), new anchor.BN(10000))
+      .initializeConfig(new anchor.BN(0), new anchor.BN(endSlot), new anchor.BN(10000))
       .instruction()
     const mint = anchor.web3.PublicKey.findProgramAddressSync([Buffer.from('collection_mint')], program.programId)[0]
 
@@ -216,5 +220,65 @@ describe('token-lottery', () => {
     // })
     const commitSignature = await anchor.web3.sendAndConfirmTransaction(connection, commitTx, [wallet.payer],{skipPreflight:true})
     console.log('Transaction Signature for commit: ', commitSignature)
+
+    const sbRevealIx = await randomness.revealIx();
+    const revealIx = await program.methods.revealWinner()
+      .accounts({
+        randomnessAccountData: randomness.pubkey
+      })
+      .instruction();
+    
+
+    // const revealTx = await sb.asV0Tx({
+    //   connection: switchboardProgram.provider.connection,
+    //   ixs: [sbRevealIx, revealIx],
+    //   payer: wallet.publicKey,
+    //   signers: [wallet.payer],
+    //   computeUnitPrice: 75_000,
+    //   computeUnitLimitMultiple: 1.3,
+    // });
+    const revealBlockhashContext = await connection.getLatestBlockhash()
+    const revealTx = new anchor.web3.Transaction({
+      blockhash: revealBlockhashContext.blockhash,
+      lastValidBlockHeight: revealBlockhashContext.lastValidBlockHeight,
+      feePayer: wallet.payer.publicKey,
+    })
+      .add(sbRevealIx)
+      .add(revealIx)
+
+
+      let currentSlot =0
+      while (currentSlot < endSlot) {
+        const slotloop = await connection.getSlot();
+        if (slotloop > currentSlot) {
+          currentSlot = slotloop;
+          console.log("Current slot", currentSlot);
+        }
+      }
+
+      const revealSignature = await anchor.web3.sendAndConfirmTransaction(connection, revealTx, [wallet.payer],{skipPreflight:true})
+    // const revealSignature = await connection.sendTransaction(revealTx);
+    // await connection.confirmTransaction({
+    //   signature: commitSignature,
+    //   blockhash: revealBlockhashContext.blockhash,
+    //   lastValidBlockHeight: revealBlockhashContext.lastValidBlockHeight
+    // });
+    console.log("  Transaction Signature revealTx", revealSignature);
+
+    const claimIx = await program.methods.claimPrize()
+      .accounts({
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    const ClaimblockhashContext = await connection.getLatestBlockhash();
+     const claimTx = new anchor.web3.Transaction({
+      blockhash: ClaimblockhashContext.blockhash,
+      lastValidBlockHeight: ClaimblockhashContext.lastValidBlockHeight,
+      feePayer: wallet.payer.publicKey,
+    }).add(claimIx);
+
+    const claimSig = await anchor.web3.sendAndConfirmTransaction(connection, claimTx, [wallet.payer]);
+    console.log(claimSig);
+
   },300000)
 })

@@ -268,6 +268,94 @@ pub mod token_lottery {
  
         Ok(())
     }
+
+
+     pub fn reveal_winner(ctx: Context<RevealWinner>) -> Result<()> {
+        let clock = Clock::get()?;
+        let token_lottery = &mut ctx.accounts.token_lottery;
+
+        if ctx.accounts.randomness_account_data.key() != token_lottery.randomness_account {
+            return Err(ErrorCode::IncorrectRandomnessAccount.into());
+        }
+        if ctx.accounts.payer.key() != token_lottery.authority {
+            return Err(ErrorCode::NotAuthorized.into());
+        }
+        if clock.slot < token_lottery.lottery_end {
+            msg!("Current slot: {}", clock.slot);
+            msg!("End slot: {}", token_lottery.lottery_end);
+            return Err(ErrorCode::LotteryNotCompleted.into());
+        }
+        require!(token_lottery.winner_chosen == false, ErrorCode::WinnerChosen);
+
+        let randomness_data = 
+            RandomnessAccountData::parse(ctx.accounts.randomness_account_data.data.borrow()).unwrap();
+        let revealed_random_value = randomness_data.get_value(clock.slot)
+            .map_err(|_| ErrorCode::RandomnessNotResolved)?;
+
+        msg!("Randomness result: {}", revealed_random_value[0]);
+        msg!("Ticket num: {}", token_lottery.total_tickets);
+
+        let winner = 
+            revealed_random_value[0] as u64 % token_lottery.total_tickets;
+
+        msg!("Winner: {}", winner);
+
+        token_lottery.winner = winner;
+        token_lottery.winner_chosen = true;
+
+        Ok(())
+    }
+
+    pub fn claim_prize(ctx: Context<ClaimPrize>) -> Result<()> {
+        // Check if winner has been chosen
+        msg!("Winner chosen: {}", ctx.accounts.token_lottery.winner_chosen);
+        require!(ctx.accounts.token_lottery.winner_chosen, ErrorCode::WinnerNotChosen);
+        
+        // Check if token is a part of the collection
+        require!(ctx.accounts.ticket_metadata.collection.as_ref().unwrap().verified, ErrorCode::NotVerifiedTicket);
+        require!(ctx.accounts.ticket_metadata.collection.as_ref().unwrap().key == ctx.accounts.collection_mint.key(), ErrorCode::IncorrectTicket);
+
+        let ticket_name = NAME.to_owned() + &ctx.accounts.token_lottery.winner.to_string();
+        let metadata_name = ctx.accounts.ticket_metadata.name.replace("\u{0}", "");
+
+
+        msg!("Ticket name: {}", ticket_name);
+        msg!("Metdata name: {}", metadata_name);
+
+        // Check if the winner has the winning ticket
+        require!(metadata_name == ticket_name, ErrorCode::IncorrectTicket);
+        require!(ctx.accounts.destination.amount > 0, ErrorCode::IncorrectTicket);
+
+         let prize_amount = ctx.accounts.token_lottery.lottery_pot_amount;
+        ctx.accounts.token_lottery.lottery_pot_amount = 0;
+
+        **ctx.accounts.token_lottery.to_account_info().try_borrow_mut_lamports()? -= prize_amount;
+        **ctx.accounts.payer.try_borrow_mut_lamports()? += prize_amount;
+
+
+//         let signer_seeds: &[&[&[u8]]] = &[&[
+//        b"token_lottery".as_ref(),
+//        &[ctx.accounts.token_lottery.bump],
+//        ]];
+
+//      system_program::transfer(
+//     CpiContext::new_with_signer(
+//         ctx.accounts.system_program.to_account_info(),
+//         system_program::Transfer {
+//             from: ctx.accounts.token_lottery.to_account_info(),
+//             to: ctx.accounts.payer.to_account_info(),
+//         },
+//         signer_seeds, // PDA must sign!
+//     ),
+//     ctx.accounts.token_lottery.lottery_pot_amount,
+//    )?;
+        // ctx.accounts.token_lottery.lottery_pot_amount = 0;
+
+        Ok(())
+    }
+
+
+
 }
  
 #[derive(Accounts)]
@@ -443,6 +531,80 @@ pub struct CommitRandomness<'info> {
  
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+pub struct RevealWinner<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"token_lottery".as_ref()],
+        bump = token_lottery.bump,
+    )]
+    pub token_lottery: Account<'info, TokenLottery>,
+
+    /// CHECK: The account's data is validated manually within the handler.
+    pub randomness_account_data: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+
+#[derive(Accounts)]
+pub struct ClaimPrize<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"token_lottery".as_ref()],
+        bump = token_lottery.bump,
+    )]
+    pub token_lottery: Account<'info, TokenLottery>,
+
+    #[account(
+        mut,
+        seeds = [b"collection_mint".as_ref()],
+        bump,
+    )]
+    pub collection_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [token_lottery.winner.to_le_bytes().as_ref()],
+        bump,
+    )]
+    pub ticket_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [b"metadata", token_metadata_program.key().as_ref(), ticket_mint.key().as_ref()],
+        bump,
+        seeds::program = token_metadata_program.key(),
+    )]
+    pub ticket_metadata: Account<'info, MetadataAccount>,
+
+    #[account(
+        associated_token::mint = ticket_mint,
+        associated_token::authority = payer,
+        associated_token::token_program = token_program,
+    )]
+    pub destination: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        seeds = [b"metadata", token_metadata_program.key().as_ref(), collection_mint.key().as_ref()],
+        bump,
+        seeds::program = token_metadata_program.key(),
+    )]
+    pub collection_metadata: Account<'info, MetadataAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+    pub token_metadata_program: Program<'info, Metadata>,
+}
+
+
+
  
  
 #[account]
